@@ -4,7 +4,7 @@
 @filename: ls01b_node.h
 @brief:
 @version:       date:       author:     comments:
-@v1.0           18-8-28     fu          new
+@v2.0           24-02-16    yn          recovery
 *******************************************************/
 #ifndef LS01B_NODE_H
 #define LS01B_NODE_H
@@ -23,7 +23,9 @@ class LS01B_Node{
 public:
   LS01B_Node();
   ~LS01B_Node();
-  void run();
+  int init();
+  void close();
+  int run();
 
 private:
   void initParam();
@@ -34,10 +36,11 @@ private:
   ros::Publisher pub_;
   ros::Timer timer_;
 
-  LS01B *ls01b_;
+  LS01B* ls01b_;
   std::string serial_port_;
   int baud_rate_;
   double angle_resolution_;
+  double max_range_;
   std::string scan_topic_;
   std::string frame_id_;
 

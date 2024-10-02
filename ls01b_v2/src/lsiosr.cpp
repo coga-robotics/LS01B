@@ -4,42 +4,44 @@
 @filename: lsiosr.cpp
 @brief:
 @version:       date:       author:     comments:
-@v1.0           18-8-21     fu          new
+@v2.0           24-02-16    yn          recovery
 *******************************************************/
+#include "ls01b_v2/ls01b_node.h"
 #include "ls01b_v2/lsiosr.h"
+#include "ros/ros.h"
 
 namespace ls {
-
-LSIOSR * LSIOSR::instance(std::string name, int speed, int fd)
+int rc;
+LSIOSR* LSIOSR::instance(std::string name, int speed, int fd)
 {
-  static LSIOSR obj(name, speed, fd);
-  return &obj;
+  // static LSIOSR obj(name, speed, fd);
+  return new LSIOSR(name, speed, fd);
 }
 
-LSIOSR::LSIOSR(std::string port, int baud_rate, int fd):port_(port), baud_rate_(baud_rate), fd_(fd)
+LSIOSR::LSIOSR(std::string port, int baud_rate, int fd): port_(port), baud_rate_(baud_rate), fd_(fd)
 {
-  printf("port = %s, baud_rate = %d\n", port.c_str(), baud_rate);
+  ROS_INFO("port = %s, baud_rate = %d", port.c_str(), baud_rate);
 }
 
 LSIOSR::~LSIOSR()
 {
   close();
 }
-/* 串口配置的函数 */
+/* 직렬 포트 설정 함수 */
 int LSIOSR::setOpt(int nBits, uint8_t nEvent, int nStop)
 {
   struct termios newtio, oldtio;
-  /*保存测试现有串口参数设置，在这里如果串口号等出错，会有相关的出错信息*/
+  /*기존 직렬 포트 파라미터 설정을 저장하여 테스트하고 있으며, 여기서 직렬 번호 등의 오류가 발생하면 관련 오류 메시지가 나타납니다*/
   if (tcgetattr(fd_, &oldtio) != 0)
   {
     perror("SetupSerial 1");
     return -1;
   }
   bzero(&newtio, sizeof(newtio));
-  /*步骤一，设置字符大小*/
-  newtio.c_cflag |= CLOCAL;   //如果设置，modem 的控制线将会被忽略。如果没有设置，则 open()函数会阻塞直到载波检测线宣告 modem 处于摘机状态为止。
-  newtio.c_cflag |= CREAD;    //使端口能读取输入的数据
-  /*设置每个数据的位数*/
+  /*Step1. 글자크기 설정*/
+  newtio.c_cflag |= CLOCAL;   //만약 설정한다면，모뎀 제어선은 무시될 것입니다.설정이 되어 있지 않은 경우 open()함수는 반송파 감지선이 알려질 때까지 차단합니다. 모뎀 오프훅 상태가 될 때까지。
+  newtio.c_cflag |= CREAD;    //입력 데이터를 포트에서 읽을 수 있도록 하기
+  /*각 데이터의 자릿수 설정*/
   switch (nBits)
   {
   case 7:
@@ -49,20 +51,20 @@ int LSIOSR::setOpt(int nBits, uint8_t nEvent, int nStop)
     newtio.c_cflag |= CS8;
     break;
   }
-  /*设置奇偶校验位*/
+  /*패리티 비트 설정*/
   switch (nEvent)
   {
-  case 'O': //奇数
+  case 'O': //홀수
     newtio.c_iflag |= (INPCK | ISTRIP);
-    newtio.c_cflag |= PARENB;   //使能校验，如果不设PARODD则是偶校验
-    newtio.c_cflag |= PARODD;   //奇校验
+    newtio.c_cflag |= PARENB;   //Enable check, PARODD를 설정하지 않으면 짝수 체크
+    newtio.c_cflag |= PARODD;   //홀수 검사
     break;
-  case 'E': //偶数
+  case 'E': //짝수
     newtio.c_iflag |= (INPCK | ISTRIP);
     newtio.c_cflag |= PARENB;
     newtio.c_cflag &= ~PARODD;
     break;
-  case 'N':  //无奇偶校验位
+  case 'N':  //패리티 비트 없음
     newtio.c_cflag &= ~PARENB;
     break;
   }
@@ -98,51 +100,56 @@ int LSIOSR::setOpt(int nBits, uint8_t nEvent, int nStop)
     cfsetospeed(&newtio, B9600);
     break;
   }
-
   /*
-   * 设置停止位
-   * 设置停止位的位数， 如果设置，则会在每帧后产生两个停止位， 如果没有设置，则产生一个
-   * 停止位。一般都是使用一位停止位。需要两位停止位的设备已过时了。
+   * 정지 비트 설정
+   * 정지 비트의 자릿수를 설정합니다. 설정하면 프레임마다 두 개의 정지 비트가 생성되고, 설정되지 않으면 한 개의 정지 비트가 생성됩니다
+   * 스톱 비트. 일반적으로 한 자리 스톱 비트를 사용합니다.두 분의 정지 공간이 필요한 설비는 이미 구식입니다.
    * */
   if (nStop == 1)
+  {
     newtio.c_cflag &= ~CSTOPB;
+  }
   else if (nStop == 2)
+  {
     newtio.c_cflag |= CSTOPB;
-  /*设置等待时间和最小接收字符*/
+  }
+  /*대기 시간과 최소 수신 문자 설정*/
   newtio.c_cc[VTIME] = 0;
   newtio.c_cc[VMIN] = 0;
-  /*处理未接收字符*/
+  /*수신되지 않은 문자 처리*/
   tcflush(fd_, TCIFLUSH);
-  /*激活新配置*/
+  /*새 설정 활성화*/
   if ((tcsetattr(fd_, TCSANOW, &newtio)) != 0)
   {
     perror("serial set error");
     return -1;
   }
-
   return 0;
 }
 
-/* 从串口中读取数据 */
+/* 직렬 포트에서 데이터 읽기 */
 int LSIOSR::read(char *buffer, int length, int timeout)
 {
   memset(buffer, 0, length);
 
   int	totalBytesRead = 0;
-  int rc;
+  // int rc;
   char* pb = buffer;
+
+  int reset_ck = 0;
   if (timeout > 0)
   {
     rc = waitReadable(timeout);
     if (rc <= 0)
     {
+      // 재시작이 원래 있던 곳
       return (rc == 0) ? 0 : -1;
     }
-
     int	retry = 3;
     while (length > 0)
     {
       rc = ::read(fd_, pb, (size_t)length);
+
       if (rc > 0)
       {
         length -= rc;
@@ -156,20 +163,46 @@ int LSIOSR::read(char *buffer, int length, int timeout)
       }
       else if (rc < 0)
       {
-        printf("error \n");
+        ROS_ERROR("error rc %d", rc);
         retry--;
-        if (retry <= 0)
-        {
-          break;
-        }
+        if (retry <= 0) return -1;
       }
-
+      else if (rc == 0)
+      {
+        ROS_ERROR("Port Disconnected");
+        retry--;
+        if (retry <= 0) return -1;
+      }
+      // else if (rc == 0)
+      // {
+      //   reset_ck = 1;
+      //   break;
+      // }
       rc = waitReadable(20);
       if (rc <= 0)
       {
         break;
       }
+      // if (rc <= 0)
+      // {
+      //   if (rc == 0)
+      //   {
+      //     reset_ck = 1;
+      //     break;
+      //   }
+      //   else
+      //   {
+      //     break;
+      //   }
+      // }
     }
+    // if(reset_ck == 1)
+    // {
+    //   ROS_ERROR("Port Disconnected Port Initialization");
+    //   LSIOSR::init();
+    //   ls::LS01B_Node ls01b_node;
+    //   ls01b_node.run();
+    // }
   }
   else
   {
@@ -180,21 +213,19 @@ int LSIOSR::read(char *buffer, int length, int timeout)
     }
     else if ((rc < 0) && (errno != EINTR) && (errno != EAGAIN))
     {
-      printf("read error\n");
+      ROS_ERROR("read error");
       return -1;
     }
   }
-
   if(0)
   {
-    printf("Serial Rx: ");
+    ROS_ERROR("Serial Rx: ");
     for(int i = 0; i < totalBytesRead; i++)
     {
-      printf("%02X ", (buffer[i]) & 0xFF);
+      ROS_ERROR("%02X ", (buffer[i]) & 0xFF);
     }
-    printf("\n\n");
+    ROS_ERROR("\n\n");
   }
-
   return totalBytesRead;
 }
 
@@ -208,7 +239,8 @@ int LSIOSR::waitReadable(int millis)
   
   fd_set fdset;
   struct timeval tv;
-  int rc = 0;
+  // int rc = 0;
+  rc = 0;
   
   while (millis > 0)
   {
@@ -226,7 +258,6 @@ int LSIOSR::waitReadable(int millis)
 
       millis -= 5000;
     }
-
     FD_ZERO(&fdset);
     FD_SET(serial, &fdset);
     
@@ -242,7 +273,6 @@ int LSIOSR::waitReadable(int millis)
       break;
     }
   }
-
   return rc;
 }
 
@@ -257,7 +287,8 @@ int LSIOSR::waitWritable(int millis)
 
   fd_set fdset;
   struct timeval tv;
-  int rc = 0;
+  // int rc = 0;
+  rc = 0;
 
   while (millis > 0)
   {
@@ -275,7 +306,6 @@ int LSIOSR::waitWritable(int millis)
 
       millis -= 5000;
     }
-
     FD_ZERO(&fdset);
     FD_SET(serial, &fdset);
 
@@ -291,25 +321,22 @@ int LSIOSR::waitWritable(int millis)
       break;
     }
   }
-
   return rc;
 }
 
-/* 向串口中发送数据 */
+/* 직렬 포트로 데이터 보내기 */
 int LSIOSR::send(const char* buffer, int length, int timeout)
 {
   if (fd_ < 0)
   {
     return -1;
   }
-
   if ((buffer == 0) || (length <= 0))
   {
     return -1;
   }
-
   int	totalBytesWrite = 0;
-  int rc;
+  // int rc;
   char* pb = (char*)buffer;
 
 
@@ -320,7 +347,6 @@ int LSIOSR::send(const char* buffer, int length, int timeout)
     {
       return (rc == 0) ? 0 : -1;
     }
-
     int	retry = 3;
     while (length > 0)
     {
@@ -344,7 +370,6 @@ int LSIOSR::send(const char* buffer, int length, int timeout)
           break;
         }
       }
-
       rc = waitWritable(50);
       if (rc <= 0)
       {
@@ -364,17 +389,15 @@ int LSIOSR::send(const char* buffer, int length, int timeout)
       return -1;
     }
   }
-
   if(0)
   {
-    printf("Serial Tx: ");
+    ROS_INFO("Serial Tx: ");
     for(int i = 0; i < totalBytesWrite; i++)
     {
-      printf("%02X ", (buffer[i]) & 0xFF);
+      ROS_INFO("%02X ", (buffer[i]) & 0xFF);
     }
-    printf("\n\n");
+    ROS_INFO("\n\n");
   }
-
   return totalBytesWrite;
 }
 
@@ -382,26 +405,28 @@ int LSIOSR::init()
 {
   int error_code = 0;
 
+  close();
   fd_ = open(port_.c_str(), O_RDWR|O_NOCTTY|O_NDELAY);
-  if (0 < fd_)
+  if (fd_ < 0)
   {
-    error_code = 0;
-    setOpt(DATA_BIT_8, PARITY_NONE, STOP_BIT_1);//设置串口参数
-    printf("open_port %s , fd %d OK !\n", port_.c_str(), fd_);
+    error_code = -1;
+    ROS_ERROR("open_port %s ERROR !", port_.c_str());
   }
   else
   {
-    error_code = -1;
-    printf("open_port %s ERROR !\n", port_.c_str());
+    error_code = 0;
+    setOpt(DATA_BIT_8, PARITY_NONE, STOP_BIT_1);//직렬 포트 매개 변수 설정
+    ROS_INFO("open_port %s , fd %d OK !", port_.c_str(), fd_);
   }
-  printf("LSIOSR::Init\n");
 
   return error_code;
 }
 
 int LSIOSR::close()
 {
-  ::close(fd_);
+  if(fd_ >= 0) ::close(fd_);
+  fd_ = -1;
+  return 1;
 }
 
 std::string LSIOSR::getPort()

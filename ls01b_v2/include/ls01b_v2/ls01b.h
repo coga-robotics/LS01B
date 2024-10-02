@@ -4,12 +4,13 @@
 @filename: ls01b.h
 @brief:
 @version:       date:       author:     comments:
-@v1.0           18-8-21     fu          new
+@v2.0           24-02-16    yn          recovery
 *******************************************************/
 #ifndef LS01B_H
 #define LS01B_H
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/thread.hpp>
+#include <thread>
 #include <string>
 #include "ls01b_v2/lsiosr.h"
 #include <ros/ros.h>
@@ -39,6 +40,7 @@ public:
     */
     static LS01B* instance(std::string port, int baud_rate, double resolution);
 
+    void close();
     /**
     * 判断雷达是否有效
     */
@@ -117,8 +119,8 @@ private:
     std::vector<ScanPoint> scan_points_bak_;
 //    ScanMsg scan_msg_;
 
-    LSIOSR * serial_;
-    boost::thread *recv_thread_;
+    LSIOSR* serial_;
+    std::thread* recv_thread_;
     boost::mutex mutex_;
 
     bool is_shutdown_;    // shutdown recvthread

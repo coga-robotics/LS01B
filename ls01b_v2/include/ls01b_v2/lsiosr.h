@@ -4,7 +4,7 @@
 @filename: lsiosr.h
 @brief:
 @version:       date:       author:     comments:
-@v1.0           18-8-21     fu          new
+@v2.0           24-02-16    yn          recovery
 *******************************************************/
 #ifndef LSIOSR_H
 #define LSIOSR_H
@@ -45,34 +45,36 @@ namespace ls
 {
 class LSIOSR{
 public:
-  static LSIOSR* instance(std::string name, int speed, int fd = 0);
-
+  static LSIOSR* instance(std::string name, int speed, int fd = -1);
+  // int rc;
   ~LSIOSR();
 
-  /* 从串口中读取数据 */
-  int read(char *buffer, int length, int timeout = 30);
+  /* 직렬 포트에서 데이터 읽기 */
+  int read(char* buffer, int length, int timeout = 30);
 
-  /* 向串口传数据 */
+  /* 직렬로 데이터 전송 */
   int send(const char* buffer, int length, int timeout = 30);
 
-  /* 串口初始化 */
+  /* 직렬 포트 초기화 */
   int init();
 
   int close();
 
-  /* 获取串口号 */
+  /* 일련의 구호를 가져오는 중 */
   std::string getPort();
 
-  /* 设置串口号 */
+  /* 일련의 구호 설정 */
   int setPort(std::string name);
 
+
 private:
+
   LSIOSR(std::string name, int speed, int fd);
 
   int waitWritable(int millis);
   int waitReadable(int millis);
 
-  /* 串口配置的函数 */
+  /* 직렬 포트 설정 함수 */
   int setOpt(int nBits, uint8_t nEvent, int nStop);
 
   std::string port_;
